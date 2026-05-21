@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Disney Dream Interactive VR Mockup</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #020413;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      cursor: grab;
+    }
+
+    canvas.dragging {
+      cursor: grabbing;
+    }
+
+    .vr-vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 6;
+      background:
+        radial-gradient(
+          ellipse at center,
+          rgba(0,0,0,0) 58%,
+          rgba(0,0,0,0.16) 82%,
+          rgba(0,0,0,0.48) 100%
+        );
+      mix-blend-mode: multiply;
+    }
+
+    .hotspot {
+      position: fixed;
+      z-index: 9999;
+      cursor: pointer !important;
+      pointer-events: auto;
+      background: transparent;
+      border: none;
+      outline: none;
+      box-shadow: none;
+      border-radius: 999px;
+      display: none;
+    }
+
+    .hotspot:hover {
+      background: transparent;
+      border: none;
+      outline: none;
+      box-shadow: none;
+      cursor: pointer !important;
+    }
+
+    #homeEnterHotspot {
+      left: 40%;
+      top: 75%;
+      width: 20%;
+      height: 9%;
+    }
+
+    #guideStartHotspot {
+      left: 17%;
+      top: 65%;
+      width: 22%;
+      height: 10%;
+    }
+
+    #hubFantasyHotspot {
+      left: 29%;
+      top: 40%;
+      width: 24%;
+      height: 15%;
+    }
+
+    #landCrystalHotspot {
+      left: 37%;
+      top: 50%;
+      width: 40%;
+      height: 40%;
+    }
+
+    #questMemoryHotspot {
+      left: 55%;
+      top: 87%;
+      width: 28%;
+      height: 14%;
+      z-index: 9999;
+      cursor: pointer !important;
+      pointer-events: auto;
+    }
+
+    #backButton {
+      position: fixed;
+      right: 26px;
+      top: 24px;
+      z-index: 10000;
+      display: none;
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.28);
+      background: rgba(10, 18, 50, 0.48);
+      color: rgba(255,255,255,0.92);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      backdrop-filter: blur(10px);
+      cursor: pointer;
+    }
+
+    #backButton:hover {
+      background: rgba(40, 70, 150, 0.62);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="vr-vignette"></div>
+
+  <div id="homeEnterHotspot" class="hotspot" title="Enter Your Dream"></div>
+  <div id="guideStartHotspot" class="hotspot" title="Start with Stella"></div>
+  <div id="hubFantasyHotspot" class="hotspot" title="Fantasy Land"></div>
+  <div id="landCrystalHotspot" class="hotspot" title="Crystal Lake Path"></div>
+  <div id="questMemoryHotspot" class="hotspot" title="Memory"></div>
+
+  <button id="backButton">Back</button>
+
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+    const curveStrength = 4.00;
+    const cameraZ = 3.85;
+    const screenZ = -2.85;
+    const displayPadding = 1.30;
+
+    const pages = {
+      home: "home.png",
+      guide: "guide.png",
+      hub: "hub.png",
+      land: "land.png",
+      quest: "quest.png",
+      memory: "memory.png"
+    };
+
+    let currentPage = "home";
+    const pageHistory = [];
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020413);
+
+    const camera = new THREE.PerspectiveCamera(
+      74,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      100
+    );
+
+    camera.position.set(0, 0, cameraZ);
+    camera.rotation.order = "YXZ";
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false
+    });
+
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.domElement.style.touchAction = "none";
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 1.18));
+
+    const softBlueLight = new THREE.PointLight(0x4f8cff, 1.0, 18);
+    softBlueLight.position.set(0, 1.8, 3.4);
+    scene.add(softBlueLight);
+
+    const screenGroup = new THREE.Group();
+    scene.add(screenGroup);
+
+    const starGroup = new THREE.Group();
+    scene.add(starGroup);
+
+    const textureLoader = new THREE.TextureLoader();
+    let immersiveWorld = null;
+    let currentImageAspect = 16 / 9;
+
+    function createStarField(count, size, opacity, spreadX, spreadY, depth, zOffset) {
+      const geometry = new THREE.BufferGeometry();
+      const positions = [];
+
+      for (let i = 0; i < count; i++) {
+        positions.push(
+          (Math.random() - 0.5) * spreadX,
+          (Math.random() - 0.5) * spreadY,
+          -Math.random() * depth + zOffset
+        );
+      }
+
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(positions, 3)
+      );
+
+      const material = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size,
+        transparent: true,
+        opacity,
+        depthWrite: false
+      });
+
+      const stars = new THREE.Points(geometry, material);
+      starGroup.add(stars);
+      return stars;
+    }
+
+    const farStars = createStarField(1200, 0.018, 0.38, 24, 13, 16, -1.4);
+    const nearStars = createStarField(280, 0.032, 0.24, 14, 8, 8, -0.5);
+
+    function getContainedScreenSize(imageAspect) {
+      const distance = camera.position.z - screenZ;
+      const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * distance;
+      const visibleWidth = visibleHeight * camera.aspect;
+
+      let width = visibleWidth * displayPadding;
+      let height = width / imageAspect;
+
+      if (height > visibleHeight * displayPadding) {
+        height = visibleHeight * displayPadding;
+        width = height * imageAspect;
+      }
+
+      return { width, height };
+    }
+
+    function createCurvedGeometry(width, height) {
+      const geometry = new THREE.PlaneGeometry(width, height, 180, 60);
+      const pos = geometry.attributes.position;
+
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+
+        const nx = x / (width / 2);
+        const ny = y / (height / 2);
+
+        const horizontalCurve = Math.pow(Math.abs(nx), 2) * curveStrength;
+        const verticalCurve = Math.pow(Math.abs(ny), 2) * 0.04;
+
+        pos.setZ(i, horizontalCurve + verticalCurve);
+      }
+
+      pos.needsUpdate = true;
+      geometry.computeVertexNormals();
+
+      return geometry;
+    }
+
+    function updateScreenGeometry() {
+      if (!immersiveWorld) return;
+
+      const { width, height } = getContainedScreenSize(currentImageAspect);
+      const oldGeometry = immersiveWorld.geometry;
+
+      immersiveWorld.geometry = createCurvedGeometry(width, height);
+      oldGeometry.dispose();
+    }
+
+    function loadPageTexture(pageName, pushHistory = true) {
+      const imageName = pages[pageName];
+
+      if (!imageName) {
+        console.error(`Page "${pageName}" does not exist.`);
+        return;
+      }
+
+      textureLoader.load(
+        imageName,
+        function(texture) {
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+          currentImageAspect = texture.image.width / texture.image.height;
+
+          if (pushHistory && currentPage !== pageName) {
+            pageHistory.push(currentPage);
+          }
+
+          currentPage = pageName;
+          updateHotspots();
+
+          if (!immersiveWorld) {
+            const { width, height } = getContainedScreenSize(currentImageAspect);
+            const geometry = createCurvedGeometry(width, height);
+
+            const material = new THREE.MeshBasicMaterial({
+              map: texture,
+              side: THREE.DoubleSide,
+              transparent: true,
+              opacity: 1
+            });
+
+            immersiveWorld = new THREE.Mesh(geometry, material);
+            immersiveWorld.position.set(0, 0, screenZ);
+            screenGroup.add(immersiveWorld);
+            return;
+          }
+
+          updateScreenGeometry();
+
+          const material = immersiveWorld.material;
+          let fadeOut = 1;
+
+          function fadeToNewTexture() {
+            fadeOut -= 0.09;
+            material.opacity = Math.max(fadeOut, 0);
+
+            if (fadeOut > 0) {
+              requestAnimationFrame(fadeToNewTexture);
+            } else {
+              if (material.map) material.map.dispose();
+              material.map = texture;
+              material.needsUpdate = true;
+
+              let fadeIn = 0;
+
+              function fadeInNewTexture() {
+                fadeIn += 0.09;
+                material.opacity = Math.min(fadeIn, 1);
+
+                if (fadeIn < 1) {
+                  requestAnimationFrame(fadeInNewTexture);
+                }
+              }
+
+              fadeInNewTexture();
+            }
+          }
+
+          fadeToNewTexture();
+        },
+        undefined,
+        function(error) {
+          console.error(
+            `${imageName} failed to load. Make sure "${imageName}" is in the same folder as index.html.`,
+            error
+          );
+        }
+      );
+    }
+
+    const hotspots = {
+      home: document.getElementById("homeEnterHotspot"),
+      guide: document.getElementById("guideStartHotspot"),
+      hub: document.getElementById("hubFantasyHotspot"),
+      land: document.getElementById("landCrystalHotspot"),
+      quest: document.getElementById("questMemoryHotspot")
+    };
+
+    const backButton = document.getElementById("backButton");
+
+    function hideAllHotspots() {
+      Object.values(hotspots).forEach((hotspot) => {
+        hotspot.style.display = "none";
+      });
+    }
+
+    function updateHotspots() {
+      hideAllHotspots();
+
+      if (hotspots[currentPage]) {
+        hotspots[currentPage].style.display = "block";
+      }
+
+      backButton.style.display = currentPage === "home" ? "none" : "block";
+    }
+
+    hotspots.home.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      loadPageTexture("guide");
+    });
+
+    hotspots.guide.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      loadPageTexture("hub");
+    });
+
+    hotspots.hub.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      loadPageTexture("land");
+    });
+
+    hotspots.land.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      loadPageTexture("quest");
+    });
+
+    hotspots.quest.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      loadPageTexture("memory");
+    });
+
+    backButton.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+
+      if (pageHistory.length === 0) {
+        loadPageTexture("home", false);
+        return;
+      }
+
+      const previousPage = pageHistory.pop();
+      loadPageTexture(previousPage, false);
+    });
+
+    loadPageTexture("home", false);
+
+    let isDragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    let currentYaw = 0;
+    let currentPitch = 0;
+
+    let targetYaw = 0;
+    let targetPitch = 0;
+
+    const maxYaw = 0.38;
+    const maxPitch = 0.10;
+
+    renderer.domElement.addEventListener("pointerdown", (e) => {
+      isDragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      renderer.domElement.classList.add("dragging");
+    });
+
+    window.addEventListener("pointerup", () => {
+      isDragging = false;
+      renderer.domElement.classList.remove("dragging");
+    });
+
+    window.addEventListener("pointermove", (e) => {
+      if (!isDragging) return;
+
+      const deltaX = e.clientX - lastX;
+      const deltaY = e.clientY - lastY;
+
+      lastX = e.clientX;
+      lastY = e.clientY;
+
+      targetYaw -= deltaX * 0.0032;
+      targetPitch -= deltaY * 0.0015;
+
+      targetYaw = THREE.MathUtils.clamp(targetYaw, -maxYaw, maxYaw);
+      targetPitch = THREE.MathUtils.clamp(targetPitch, -maxPitch, maxPitch);
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft") targetYaw += 0.05;
+      if (e.key === "ArrowRight") targetYaw -= 0.05;
+      if (e.key === "ArrowUp") targetPitch += 0.03;
+      if (e.key === "ArrowDown") targetPitch -= 0.03;
+
+      targetYaw = THREE.MathUtils.clamp(targetYaw, -maxYaw, maxYaw);
+      targetPitch = THREE.MathUtils.clamp(targetPitch, -maxPitch, maxPitch);
+    });
+
+    renderer.domElement.addEventListener("dblclick", () => {
+      targetYaw = 0;
+      targetPitch = 0;
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const time = performance.now() * 0.001;
+
+      screenGroup.position.y = Math.sin(time * 0.55) * 0.01;
+
+      farStars.rotation.y += 0.00012;
+      nearStars.rotation.y -= 0.00028;
+
+      currentYaw += (targetYaw - currentYaw) * 0.08;
+      currentPitch += (targetPitch - currentPitch) * 0.08;
+
+      camera.rotation.y = currentYaw;
+      camera.rotation.x = currentPitch;
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      updateScreenGeometry();
+    });
+  </script>
+</body>
+</html>
